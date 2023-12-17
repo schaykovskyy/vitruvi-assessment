@@ -3,6 +3,7 @@ import os
 import json
 from dotenv import load_dotenv
 from work_items import work_item_ids
+from datetime import datetime
 # work_orders_url= 'https://staging.api.vitruvi.cc/api/v1/wbs/work_orders/{work_order_id}'
 # work_packages_url= 'https://staging.api.vitruvi.cc/api/v1/wbs/work_packages/{work_package_id}'
 
@@ -68,6 +69,33 @@ def largest_work_order(work_items_data):
     largest_order = max(file_data_totals, key=file_data_totals.get, default=None)
     print(f"\n2) Largest work order by photos size: \nWork order {largest_order}")
 
+def parse_iso_date(date_str):
+    return datetime.fromisoformat(date_str[:-1])
+
+def work_package_with_least_average_time(work_items_data):
+    time_diffs = {}
+    counts = {}
+    for work_item_id, work_item in work_items_data.items():
+        # if work_item['status'] == 'completed':
+        if 'completed' in work_item['status_last_modified']:
+            work_package_id = work_item['work_package']
+            created_date = parse_iso_date(work_item['created'])
+            completed_date = parse_iso_date(work_item['status_last_modified']['completed'])
+            duration = (completed_date - created_date).total_seconds()
+
+            if work_package_id in time_diffs:
+                time_diffs[work_package_id] += duration
+                counts[work_package_id] += 1
+            else:
+                time_diffs[work_package_id] = duration
+                counts[work_package_id] = 1
+
+    for work_package_id in time_diffs:
+        time_diffs[work_package_id] /= counts[work_package_id]
+
+    min_avg_time = min(time_diffs, key=time_diffs.get) 
+    print(f"\n3) Mininum average time between start and completion: \nWork package {min_avg_time}")
+
 #-------------------------------------------------------------------------------
 data_filename = 'work_items_data.json'
 if os.path.exists(data_filename):
@@ -79,3 +107,4 @@ else:
 
 count_completed_work_items(work_items_data)
 largest_work_order(work_items_data)
+work_package_with_least_average_time(work_items_data)
