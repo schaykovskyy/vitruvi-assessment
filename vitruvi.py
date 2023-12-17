@@ -47,10 +47,26 @@ def count_completed_work_items(work_items_data):
             work_package_id = work_item['work_package']
             completed_items[work_package_id] += 1
 
-    print("1) Completed work items per package:")
+    print("\n1) Completed work items per package:")
     for wp in work_packages:
         print(f"Work Package {wp}: {completed_items[wp]} completed items")
 
+def largest_work_order(work_items_data):
+    file_data_totals = {}
+    
+    for work_item in work_items_data.values():
+        work_order_id = work_item['work_order']
+        total_size = 0
+        if 'photos' in work_item and work_item['photos']:
+            for photo in work_item['photos']:
+                photo_size = photo.get('file_size', 0)
+                if isinstance(photo_size, int):
+                    total_size += photo_size
+
+        file_data_totals[work_order_id] = file_data_totals.get(work_order_id, 0) + total_size
+
+    largest_order = max(file_data_totals, key=file_data_totals.get, default=None)
+    print(f"\n2) Largest work order by photos size: \nWork order {largest_order}")
 
 #-------------------------------------------------------------------------------
 data_filename = 'work_items_data.json'
@@ -62,3 +78,4 @@ else:
 
 
 count_completed_work_items(work_items_data)
+largest_work_order(work_items_data)
