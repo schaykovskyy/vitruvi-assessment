@@ -4,6 +4,7 @@ import json
 from dotenv import load_dotenv
 from work_items import work_item_ids
 from datetime import datetime
+import pandas as pd
 # work_orders_url= 'https://staging.api.vitruvi.cc/api/v1/wbs/work_orders/{work_order_id}'
 # work_packages_url= 'https://staging.api.vitruvi.cc/api/v1/wbs/work_packages/{work_package_id}'
 
@@ -36,66 +37,6 @@ def load_data_from_file(filename):
     with open(filename,'r') as file:
         return json.load(file)
 
-def count_completed_work_items(work_items_data):
-    work_packages = set()
-    for work_item in work_items_data.values():
-        work_packages.add(work_item['work_package'])
-
-    completed_items = {wp: 0 for wp in work_packages}
-
-    for work_item in work_items_data.values():
-        if work_item['status'] == 'completed':
-            work_package_id = work_item['work_package']
-            completed_items[work_package_id] += 1
-
-    print("\n1) Completed work items per package:")
-    for wp in work_packages:
-        print(f"Work Package {wp}: {completed_items[wp]} completed items")
-
-def largest_work_order(work_items_data):
-    file_data_totals = {}
-    
-    for work_item in work_items_data.values():
-        work_order_id = work_item['work_order']
-        total_size = 0
-        if 'photos' in work_item and work_item['photos']:
-            for photo in work_item['photos']:
-                photo_size = photo.get('file_size', 0)
-                if isinstance(photo_size, int):
-                    total_size += photo_size
-
-        file_data_totals[work_order_id] = file_data_totals.get(work_order_id, 0) + total_size
-
-    largest_order = max(file_data_totals, key=file_data_totals.get, default=None)
-    print(f"\n2) Largest work order by photos size: \nWork order {largest_order}")
-
-def parse_iso_date(date_str):
-    return datetime.fromisoformat(date_str[:-1])
-
-def work_package_with_least_average_time(work_items_data):
-    time_diffs = {}
-    counts = {}
-    for work_item_id, work_item in work_items_data.items():
-        # if work_item['status'] == 'completed':
-        if 'completed' in work_item['status_last_modified']:
-            work_package_id = work_item['work_package']
-            created_date = parse_iso_date(work_item['created'])
-            completed_date = parse_iso_date(work_item['status_last_modified']['completed'])
-            duration = (completed_date - created_date).total_seconds()
-
-            if work_package_id in time_diffs:
-                time_diffs[work_package_id] += duration
-                counts[work_package_id] += 1
-            else:
-                time_diffs[work_package_id] = duration
-                counts[work_package_id] = 1
-
-    for work_package_id in time_diffs:
-        time_diffs[work_package_id] /= counts[work_package_id]
-
-    min_avg_time = min(time_diffs, key=time_diffs.get) 
-    print(f"\n3) Mininum average time between start and completion: \nWork package {min_avg_time}")
-
 #-------------------------------------------------------------------------------
 data_filename = 'work_items_data.json'
 if os.path.exists(data_filename):
@@ -104,7 +45,28 @@ else:
     work_items_data = fetch_work_items_from_api()
     save_data_to_file(work_items_data,data_filename)
 
+df = pd.read_json('work_items_data.json', orient='index')
 
-count_completed_work_items(work_items_data)
-largest_work_order(work_items_data)
-work_package_with_least_average_time(work_items_data)
+print("\n1) Completed work items per package: ")
+completed_items_count = df[df['status']== 'completed']['work_package'].value_counts()
+print(completed_items_count)
+
+
+print("\n2) Work order with most file data: ")
+photos_df = df['photos'].apply(pd.Series)
+photos_df = photos_df.stack().reset_index(level=1, drop=True).apply(pd.Series)
+
+photos_df['file_size'] = photos_df['file_size'].fillna(0)
+total_file_sizes = photos_df.groupby(df['work_order'])['file_size'].sum()
+work_order_most_data = total_file_sizes.idxmax()
+print(work_order_most_data)
+
+
+print("\n3) Work package with shortest avarage time between start and competion: ")
+df['created'] = pd.to_datetime(df['created'])
+df['completed'] = pd.to_datetime(df['status_last_modified'].apply(lambda x: x.get('completed')))
+
+df['duration'] = (df['completed'] - df['created']).dt.total_seconds()
+average_durations = df.groupby('work_package')['duration'].mean()
+min_duration_package = average_durations.idxmin()
+print(min_duration_package)
